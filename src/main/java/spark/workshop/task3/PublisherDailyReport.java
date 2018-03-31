@@ -1,16 +1,29 @@
 package spark.workshop.task3;
 
+import org.apache.spark.broadcast.Broadcast;
 import org.apache.spark.sql.Dataset;
 import org.apache.spark.sql.Row;
+import org.apache.spark.sql.api.java.UDF1;
+import org.apache.spark.sql.types.DataTypes;
+import spark.workshop.util.Registry;
 import spark.workshop.util.SparkHelper;
+import static scala.reflect.ClassManifestFactory.fromClass;
 
-import static org.apache.spark.sql.functions.*;
+import static org.apache.spark.sql.functions.col;
+import static org.apache.spark.sql.functions.callUDF;
+import static org.apache.spark.sql.functions.count;
 
 public class PublisherDailyReport {
     private SparkHelper spark = new SparkHelper();
-    private Dataset<Row> reqDs = spark.getSession().read().json("data/ad-request.json");
-    private Dataset<Row> rspDs = spark.getSession().read().json("data/ad-response.json");
-    private Dataset<Row> impDs = spark.getSession().read().json("data/impression.json");
+    private Dataset<Row> reqDs = spark.session.read().json("data/ad-request.json");
+    private Dataset<Row> rspDs = spark.session.read().json("data/ad-response.json");
+    private Dataset<Row> impDs = spark.session.read().json("data/impression.json");
+
+    public PublisherDailyReport() {
+        Broadcast<Registry> registryBroadcast = spark.context.broadcast(new Registry(), fromClass(Registry.class));
+        UDF1<Long, String> getPublisherName = registryBroadcast.value()::getPublisherName;
+        spark.session.udf().register("getPublisherName", getPublisherName, DataTypes.StringType);
+    }
 
     public void showSource() {
         reqDs.show(false);
@@ -19,50 +32,44 @@ public class PublisherDailyReport {
     }
 
     /*
-        TODO: Show daily statistics per Publisher.
-
-        Report should have following columns:
-            • publisher id
-            • day (as formatted string yyyy-MM-dd)
-            • requests count
-            • responses count
-            • impressions count
+        TODO: Show daily statistics per Publisher including request/response/impression counters
 
         Expected output:
-            +-----------+----------+------------+-------------+---------------+
-            |publisherId|       day|requestCount|responseCount|impressionCount|
-            +-----------+----------+------------+-------------+---------------+
-            |          1|2018-03-11|           2|            2|              1|
-            |          1|2018-03-12|           2|            0|              0|
-            |          1|2018-03-13|           2|            1|              0|
-            |          2|2018-03-12|           2|            2|              1|
-            |          2|2018-03-13|           1|            1|              1|
-            |          3|2018-03-11|           6|            4|              4|
-            |          3|2018-03-12|           6|            2|              1|
-            |          3|2018-03-13|           2|            0|              0|
-            |          4|2018-03-11|           2|            2|              0|
-            |          4|2018-03-12|           1|            1|              0|
-            |          4|2018-03-13|           1|            0|              0|
-            |          5|2018-03-11|           3|            0|              0|
-            |          5|2018-03-12|           2|            2|              0|
-            |          6|2018-03-11|           1|            1|              0|
-            |          6|2018-03-12|           1|            0|              0|
-            |          6|2018-03-13|           3|            1|              0|
-            |          7|2018-03-11|           3|            3|              2|
-            |          7|2018-03-13|           1|            1|              1|
-            |          8|2018-03-12|           1|            1|              1|
-            |          8|2018-03-13|           1|            1|              0|
-            |          9|2018-03-12|           3|            2|              2|
-            |          9|2018-03-13|           1|            1|              0|
-            |         10|2018-03-12|           2|            2|              1|
-            |         10|2018-03-13|           1|            0|              0|
-            +-----------+----------+------------+-------------+---------------+
+        +---------------+----------+--------+---------+-----------+
+        |      publisher|       day|requests|responses|impressions|
+        +---------------+----------+--------+---------+-----------+
+        |    Bertelsmann|2018-03-11|       2|        2|          0|
+        |    Bertelsmann|2018-03-12|       1|        1|          0|
+        |    Bertelsmann|2018-03-13|       1|        0|          0|
+        |  Grupo Planeta|2018-03-11|       3|        3|          2|
+        |  Grupo Planeta|2018-03-13|       1|        1|          1|
+        | Hachette Livre|2018-03-11|       1|        1|          0|
+        | Hachette Livre|2018-03-12|       1|        0|          0|
+        | Hachette Livre|2018-03-13|       3|        1|          0|
+        |    McGraw-Hill|2018-03-12|       1|        1|          1|
+        |    McGraw-Hill|2018-03-13|       1|        1|          0|
+        |        Pearson|2018-03-11|       2|        2|          1|
+        |        Pearson|2018-03-12|       2|        0|          0|
+        |        Pearson|2018-03-13|       2|        1|          0|
+        |     RELX Group|2018-03-12|       2|        2|          1|
+        |     RELX Group|2018-03-13|       1|        1|          1|
+        |Springer Nature|2018-03-12|       2|        2|          1|
+        |Springer Nature|2018-03-13|       1|        0|          0|
+        | ThomsonReuters|2018-03-11|       6|        4|          4|
+        | ThomsonReuters|2018-03-12|       6|        2|          1|
+        | ThomsonReuters|2018-03-13|       2|        0|          0|
+        |          Wiley|2018-03-12|       3|        2|          2|
+        |          Wiley|2018-03-13|       1|        1|          0|
+        | Wolters Kluwer|2018-03-11|       3|        0|          0|
+        | Wolters Kluwer|2018-03-12|       2|        2|          0|
+        +---------------+----------+--------+---------+-----------+
 
         Hints:
-            • Join 3 datasets reqDs, rspDs, impDs via auctionId column
-            • add day column to dataset populated as substring from date column
-            • aggregate dataset by publisherId and day
-            • calculate total count number of records for each dataset
+            1) join 3 datasets reqDs, rspDs, impDs via auctionId column
+            2) add day column to dataset populated as substring from date column
+            3) group dataset by publisherId and day
+            4) calculate total count number of records for each dataset
+            5) map publisherId to publisher name and sort
 
      */
     public Dataset<Row> build() {

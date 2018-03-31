@@ -22,19 +22,19 @@ public class FillRateReportTest {
     @Test
     public void bestFillRatePublisher() {
         Row firstRow = ds.collectAsList().get(0);
-        assertThat(firstRow.<Long>getAs("publisherId")).isEqualTo(7);
+        assertThat(firstRow.<String>getAs("publisher")).isIn("RELX Group", "McGraw-Hill", "Grupo Planeta");
         assertThat(firstRow.<Double>getAs("fillRate")).isCloseTo(1.0, Offset.offset(0.1));
     }
 
     @Test
     public void worstFillRatePublisher() {
         Row firstRow = ds.collectAsList().get((int) Math.max(ds.count() - 1, 0));
-        assertThat(firstRow.<Long>getAs("publisherId")).isEqualTo(5);
+        assertThat(firstRow.<String>getAs("publisher")).isIn("Wolters Kluwer", "Hachette Livre");
         assertThat(firstRow.<Double>getAs("fillRate")).isCloseTo(0.4, Offset.offset(0.1));
     }
 
     @Test
     public void has2Columns() {
-        assertThat(ds.columns()).containsOnly("publisherId", "fillRate");
+        assertThat(ds.columns()).containsOnly("publisher", "fillRate");
     }
 }
