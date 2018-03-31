@@ -37,6 +37,9 @@ public class CostReport {
 
     */
     public Dataset<Row> build() {
-        return src;
+        return src.filter(col("advertiserId").isin(8, 9, 10))
+            .groupBy("advertiserId")
+            .agg(sum("price").as("sum"))
+            .orderBy(desc("sum"));
     }
 }
